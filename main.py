@@ -1,20 +1,12 @@
 import uuid
 
-from fastapi import Depends
-from fastapi import FastAPI, Form
-from fastapi import Request, Response
+from fastapi import Depends, FastAPI, Form, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from database import Base
-from database import SessionLocal
-from database import engine
-from models import create_todo
-from models import delete_todo
-from models import get_todo
-from models import get_todos
-from models import update_todo
+from database import Base, SessionLocal, engine
+from models import create_todo, delete_todo, get_todo, get_todos, update_todo
 
 Base.metadata.create_all(bind=engine)
 
@@ -45,9 +37,14 @@ def home(request: Request, db: Session = Depends(get_db)):
 
 
 @app.post("/add", response_class=HTMLResponse)
-def post_add(request: Request, content: str = Form(...), db: Session = Depends(get_db)):
+def post_add(
+    request: Request,
+    content: str = Form(...),
+    notes: str = Form(None),  # Optional notes field added
+    db: Session = Depends(get_db)
+):
     session_key = request.cookies.get("session_key")
-    todo = create_todo(db, content=content, session_key=session_key)
+    todo = create_todo(db, content=content, session_key=session_key, notes=notes)
     context = {"request": request, "todo": todo}
     return templates.TemplateResponse("todo/item.html", context)
 
@@ -60,8 +57,14 @@ def get_edit(request: Request, item_id: int, db: Session = Depends(get_db)):
 
 
 @app.put("/edit/{item_id}", response_class=HTMLResponse)
-def put_edit(request: Request, item_id: int, content: str = Form(...), db: Session = Depends(get_db)):
-    todo = update_todo(db, item_id, content)
+def put_edit(
+    request: Request,
+    item_id: int,
+    content: str = Form(...),
+    notes: str = Form(None),  # Optional notes field added for updates
+    db: Session = Depends(get_db)
+):
+    todo = update_todo(db, item_id, content, notes)
     context = {"request": request, "todo": todo}
     return templates.TemplateResponse("todo/item.html", context)
 
