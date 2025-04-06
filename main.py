@@ -1,45 +1,74 @@
-from sqlalchemy import Integer, String, Text
-from sqlalchemy.orm import Session, Mapped, mapped_column
+import uuid
 
-from database import Base
+from fastapi import Depends, FastAPI, Form, Request, Response
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
 
+from database import Base, SessionLocal, engine
+from models import create_todo, delete_todo, get_todo, get_todos, update_todo
 
-class ToDo(Base):
-    __tablename__ = "todos"
+Base.metadata.create_all(bind=engine)
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    content: Mapped[str] = mapped_column(String)
-    session_key: Mapped[str] = mapped_column(String)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-
-def create_todo(db: Session, content: str, session_key: str, notes: str = None):
-    todo = ToDo(content=content, session_key=session_key, notes=notes)
-    db.add(todo)
-    db.commit()
-    db.refresh(todo)
-    return todo
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
 
 
-def get_todo(db: Session, item_id: int):
-    return db.query(ToDo).filter(ToDo.id == item_id).first()
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
-def update_todo(db: Session, item_id: int, content: str, notes: str = None):
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request, db: Session = Depends(get_db)):
+    session_key = request.cookies.get("session_key", uuid.uuid4().hex)
+    todos = get_todos(db, session_key)
+    context = {
+        "request": request,
+        "todos": todos,
+        "title": "Home"
+    }
+    response = templates.TemplateResponse("home.html", context)
+    response.set_cookie(key="session_key", value=session_key, expires=259200)  # 3 days
+    return response
+
+
+@app.post("/add", response_class=HTMLResponse)
+def post_add(
+    request: Request,
+    content: str = Form(...),
+    notes: str = Form(None),  # Optional notes field added
+    db: Session = Depends(get_db)
+):
+    session_key = request.cookies.get("session_key")
+    todo = create_todo(db, content=content, session_key=session_key, notes=notes)
+    context = {"request": request, "todo": todo}
+    return templates.TemplateResponse("todo/item.html", context)
+
+
+@app.get("/edit/{item_id}", response_class=HTMLResponse)
+def get_edit(request: Request, item_id: int, db: Session = Depends(get_db)):
     todo = get_todo(db, item_id)
-    todo.content = content
-    if notes is not None:
-        todo.notes = notes
-    db.commit()
-    db.refresh(todo)
-    return todo
+    context = {"request": request, "todo": todo}
+    return templates.TemplateResponse("todo/form.html", context)
 
 
-def get_todos(db: Session, session_key: str, skip: int = 0, limit: int = 100):
-    return db.query(ToDo).filter(ToDo.session_key == session_key).offset(skip).limit(limit).all()
+@app.put("/edit/{item_id}", response_class=HTMLResponse)
+def put_edit(
+    request: Request,
+    item_id: int,
+    content: str = Form(...),
+    notes: str = Form(None),  # Optional notes field added for updates
+    db: Session = Depends(get_db)
+):
+    todo = update_todo(db, item_id, content, notes)
+    context = {"request": request, "todo": todo}
+    return templates.TemplateResponse("todo/item.html", context)
 
 
-def delete_todo(db: Session, item_id: int):
-    todo = get_todo(db, item_id)
-    db.delete(todo)
-    db.commit()
+@app.delete("/delete/{item_id}", response_class=Response)
+def delete(item_id: int, db: Session = Depends(get_db)):
+    delete_todo(db, item_id)

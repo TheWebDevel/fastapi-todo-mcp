@@ -10,7 +10,7 @@ class ToDo(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     content: Mapped[str] = mapped_column(String)
     session_key: Mapped[str] = mapped_column(String)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # New column added
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 def create_todo(db: Session, content: str, session_key: str, notes: str = None):
